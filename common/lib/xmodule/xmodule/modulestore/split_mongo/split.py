@@ -1519,33 +1519,35 @@ class SplitMongoModuleStore(SplitBulkWriteMixin, ModuleStoreWriteBase):
                 user_id, parent_usage_key.course_key, block_type, block_id=block_id, fields=fields,
                 **kwargs)
 
-            # don't version the structure as create_item handled that already.
-            new_structure = self._lookup_course(xblock.location.course_key).structure
+            # attach to parent if given
+            if 'detached' not in xblock._class_tags:    # pylint: disable=protected-access
+                # don't version the structure as create_item handled that already.
+                new_structure = self._lookup_course(xblock.location.course_key).structure
 
-            # add new block as child and update parent's version
-            block_id = BlockKey.from_usage_key(parent_usage_key)
-            if block_id not in new_structure['blocks']:
-                raise ItemNotFoundError(parent_usage_key)
+                # add new block as child and update parent's version
+                block_id = BlockKey.from_usage_key(parent_usage_key)
+                if block_id not in new_structure['blocks']:
+                    raise ItemNotFoundError(parent_usage_key)
 
-            parent = new_structure['blocks'][block_id]
+                parent = new_structure['blocks'][block_id]
 
-            # Originally added to support entrance exams (settings.FEATURES.get('ENTRANCE_EXAMS'))
-            if kwargs.get('position') is None:
-                parent['fields'].setdefault('children', []).append(BlockKey.from_usage_key(xblock.location))
-            else:
-                parent['fields'].setdefault('children', []).insert(
-                    kwargs.get('position'),
-                    BlockKey.from_usage_key(xblock.location)
-                )
+                # Originally added to support entrance exams (settings.FEATURES.get('ENTRANCE_EXAMS'))
+                if kwargs.get('position') is None:
+                    parent['fields'].setdefault('children', []).append(BlockKey.from_usage_key(xblock.location))
+                else:
+                    parent['fields'].setdefault('children', []).insert(
+                        kwargs.get('position'),
+                        BlockKey.from_usage_key(xblock.location)
+                    )
 
-            if parent['edit_info']['update_version'] != new_structure['_id']:
-                # if the parent hadn't been previously changed in this bulk transaction, indicate that it's
-                # part of the bulk transaction
-                self.version_block(parent, user_id, new_structure['_id'])
-            self.decache_block(parent_usage_key.course_key, new_structure['_id'], block_id)
+                if parent['edit_info']['update_version'] != new_structure['_id']:
+                    # if the parent hadn't been previously changed in this bulk transaction, indicate that it's
+                    # part of the bulk transaction
+                    self.version_block(parent, user_id, new_structure['_id'])
+                self.decache_block(parent_usage_key.course_key, new_structure['_id'], block_id)
 
-            # db update
-            self.update_structure(parent_usage_key.course_key, new_structure)
+                # db update
+                self.update_structure(parent_usage_key.course_key, new_structure)
 
         # don't need to update the index b/c create_item did it for this version
         return xblock
